@@ -1,0 +1,31 @@
+type RaiseHandReq {
+    liveId: int64
+    userId: int64
+}
+
+type RaiseHandResp {
+    success: bool
+}
+
+type GetRankingReq {
+    liveId: int64
+}
+
+type RankingItem {
+    userId: int64
+    stageCount: int
+    raiseCount: int
+    lastRaiseTime: int64
+}
+
+type GetRankingResp {
+    list: [RankingItem]
+}
+
+service ranking-api {
+    @handler RaiseHand
+    post /api/ranking/raiseHand (RaiseHandReq) returns (RaiseHandResp)
+
+    @handler GetRanking
+    get /api/ranking/list (GetRankingReq) returns (GetRankingResp)
+} 
