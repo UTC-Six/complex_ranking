@@ -22,10 +22,22 @@ type GetRankingResp {
     list: [RankingItem]
 }
 
+type CancelRaiseHandReq {
+    liveId: int64
+    userId: int64
+}
+
+type CancelRaiseHandResp {
+    success: bool
+}
+
 service ranking-api {
     @handler RaiseHand
     post /api/ranking/raiseHand (RaiseHandReq) returns (RaiseHandResp)
 
     @handler GetRanking
     get /api/ranking/list (GetRankingReq) returns (GetRankingResp)
+
+    @handler CancelRaiseHand
+    post /api/ranking/cancelRaiseHand (CancelRaiseHandReq) returns (CancelRaiseHandResp)
 } 

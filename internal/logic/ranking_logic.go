@@ -40,3 +40,15 @@ func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, liveID, userID int64
 	}
 	return nil
 }
+
+// OnUserCancelRaiseHand 用户撤销举手时，移除排行榜中的该用户
+func (l *RankingLogic) OnUserCancelRaiseHand(ctx context.Context, liveID, userID int64) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	zsetKey := fmt.Sprintf("live:ranking:%d", liveID)
+	err := l.RedisClient.ZRem(ctx, zsetKey, userID).Err()
+	if err != nil {
+		return fmt.Errorf("remove user from redis zset failed: %w", err)
+	}
+	return nil
+}

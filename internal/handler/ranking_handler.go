@@ -33,6 +33,15 @@ type GetRankingResp struct {
 	List []RankingItem `json:"list"`
 }
 
+type CancelRaiseHandReq struct {
+	LiveId int64 `json:"liveId"`
+	UserId int64 `json:"userId"`
+}
+
+type CancelRaiseHandResp struct {
+	Success bool `json:"success"`
+}
+
 func RaiseHandHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RaiseHandReq
@@ -76,5 +85,22 @@ func GetRankingHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			})
 		}
 		httpx.OkJson(w, &resp)
+	}
+}
+
+func CancelRaiseHandHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req CancelRaiseHandReq
+		if err := httpx.Parse(r, &req); err != nil {
+			httpx.Error(w, err)
+			return
+		}
+		ctx := r.Context()
+		err := svcCtx.RankingLogic.OnUserCancelRaiseHand(ctx, req.LiveId, req.UserId)
+		if err != nil {
+			httpx.Error(w, err)
+			return
+		}
+		httpx.OkJson(w, &CancelRaiseHandResp{Success: true})
 	}
 }
