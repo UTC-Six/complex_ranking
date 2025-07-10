@@ -29,7 +29,7 @@ func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, liveID, userID int64
 	locked, err := l.RedisClient.SetNX(ctx, lockKey, lockValue, 5*time.Second).Result()
 	if err != nil {
 		return fmt.Errorf("acquire redis lock failed: %w", err)
-	}`
+	}
 	if !locked {
 		return errors.New("another operation is in progress, please try again later")
 	}
