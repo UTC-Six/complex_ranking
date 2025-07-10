@@ -29,3 +29,13 @@ type RankingItem struct {
 	LastRaiseTime int64   `json:"last_raise_time"`
 	Score         float64 `json:"score"`
 }
+
+// InteractionRecord 表示一次互动记录
+// Status: 2=进行中, 3=已完成等
+type InteractionRecord struct {
+	ID          int64     `db:"id"`
+	ClassroomID int64     `db:"classroom_id"`
+	LiveID      int64     `db:"live_id"`
+	Status      int       `db:"status"`
+	CreatedAt   time.Time `db:"created_at"`
+}

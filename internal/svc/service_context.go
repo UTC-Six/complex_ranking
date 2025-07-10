@@ -9,10 +9,11 @@ import (
 )
 
 type ServiceContext struct {
-	RedisClient  *redis.Client
-	DB           *sql.DB
-	RankingModel *model.RankingModel
-	RankingLogic *logic.RankingLogic
+	RedisClient      *redis.Client
+	DB               *sql.DB
+	RankingModel     *model.RankingModel
+	InteractionModel *model.InteractionModel
+	RankingLogic     *logic.RankingLogic
 }
 
 func NewServiceContext(redisOpt *redis.Options, mysqlDSN string) (*ServiceContext, error) {
@@ -22,14 +23,16 @@ func NewServiceContext(redisOpt *redis.Options, mysqlDSN string) (*ServiceContex
 	}
 	redisClient := redis.NewClient(redisOpt)
 	rankingModel := &model.RankingModel{DB: db}
+	interactionModel := model.NewInteractionModel(db)
 	rankingLogic := &logic.RankingLogic{
 		RedisClient:  redisClient,
 		RankingModel: rankingModel,
 	}
 	return &ServiceContext{
-		RedisClient:  redisClient,
-		DB:           db,
-		RankingModel: rankingModel,
-		RankingLogic: rankingLogic,
+		RedisClient:      redisClient,
+		DB:               db,
+		RankingModel:     rankingModel,
+		InteractionModel: interactionModel,
+		RankingLogic:     rankingLogic,
 	}, nil
 }
