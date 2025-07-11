@@ -10,8 +10,9 @@ import (
 )
 
 type RaiseHandReq struct {
-	LiveId int64 `json:"liveId"`
-	UserId int64 `json:"userId"`
+	ClassRoomId int64 `json:"classRoomId"`
+	LiveId      int64 `json:"liveId"`
+	UserId      int64 `json:"userId"`
 }
 
 type RaiseHandResp struct {
@@ -19,14 +20,15 @@ type RaiseHandResp struct {
 }
 
 type GetRankingReq struct {
-	LiveId int64 `json:"liveId"`
+	ClassRoomId int64 `json:"classRoomId"`
 }
 
 type RankingItem struct {
-	UserId        int64 `json:"userId"`
-	StageCount    int   `json:"stageCount"`
-	RaiseCount    int   `json:"raiseCount"`
-	LastRaiseTime int64 `json:"lastRaiseTime"`
+	UserId        int64   `json:"userId"`
+	StageCount    int     `json:"stageCount"`
+	RaiseCount    int     `json:"raiseCount"`
+	LastRaiseTime int64   `json:"lastRaiseTime"`
+	Score         float64 `json:"score"`
 }
 
 type GetRankingResp struct {
@@ -34,8 +36,9 @@ type GetRankingResp struct {
 }
 
 type CancelRaiseHandReq struct {
-	LiveId int64 `json:"liveId"`
-	UserId int64 `json:"userId"`
+	ClassRoomId int64 `json:"classRoomId"`
+	LiveId      int64 `json:"liveId"`
+	UserId      int64 `json:"userId"`
 }
 
 type CancelRaiseHandResp struct {
@@ -50,7 +53,7 @@ func RaiseHandHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		err := svcCtx.RankingLogic.OnUserRaiseHand(ctx, req.LiveId, req.UserId)
+		err := svcCtx.RankingLogic.OnUserRaiseHand(ctx, req.ClassRoomId, req.LiveId, req.UserId)
 		if err != nil {
 			httpx.Error(w, err)
 			return
@@ -61,27 +64,29 @@ func RaiseHandHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 
 func GetRankingHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		liveIdStr := r.URL.Query().Get("liveId")
-		_, err := strconv.ParseInt(liveIdStr, 10, 64)
+		classRoomIdStr := r.URL.Query().Get("classRoomId")
+		classRoomId, err := strconv.ParseInt(classRoomIdStr, 10, 64)
 		if err != nil {
 			httpx.Error(w, err)
 			return
 		}
 		ctx := r.Context()
-		zsetKey := "live:ranking:" + liveIdStr
-		// 获取前 100 名
-		items, err := svcCtx.RedisClient.ZRangeWithScores(ctx, zsetKey, 0, 99).Result()
+
+		// 使用新的GetRanking方法
+		items, err := svcCtx.RankingLogic.GetRanking(ctx, classRoomId)
 		if err != nil {
 			httpx.Error(w, err)
 			return
 		}
+
 		var resp GetRankingResp
-		for _, z := range items {
-			userId, _ := z.Member.(int64)
-			// 这里可扩展为从 DB 查询详细信息
+		for _, item := range items {
 			resp.List = append(resp.List, RankingItem{
-				UserId: userId,
-				// 这里只返回 userId，详细信息可扩展
+				UserId:        item.UserID,
+				StageCount:    item.StageCount,
+				RaiseCount:    item.RaiseCount,
+				LastRaiseTime: item.LastRaiseTime,
+				Score:         item.Score,
 			})
 		}
 		httpx.OkJson(w, &resp)
@@ -96,7 +101,7 @@ func CancelRaiseHandHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
-		err := svcCtx.RankingLogic.OnUserCancelRaiseHand(ctx, req.LiveId, req.UserId)
+		err := svcCtx.RankingLogic.OnUserCancelRaiseHand(ctx, req.ClassRoomId, req.LiveId, req.UserId)
 		if err != nil {
 			httpx.Error(w, err)
 			return

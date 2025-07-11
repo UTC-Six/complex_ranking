@@ -1,4 +1,5 @@
 type RaiseHandReq {
+    classRoomId: int64
     liveId: int64
     userId: int64
 }
@@ -8,7 +9,7 @@ type RaiseHandResp {
 }
 
 type GetRankingReq {
-    liveId: int64
+    classRoomId: int64
 }
 
 type RankingItem {
@@ -16,6 +17,7 @@ type RankingItem {
     stageCount: int
     raiseCount: int
     lastRaiseTime: int64
+    score: float64
 }
 
 type GetRankingResp {
@@ -23,6 +25,7 @@ type GetRankingResp {
 }
 
 type CancelRaiseHandReq {
+    classRoomId: int64
     liveId: int64
     userId: int64
 }

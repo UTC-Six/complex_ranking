@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"complex_ranking/internal/model"
+	"complex_ranking/internal/types"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
@@ -23,8 +25,8 @@ type RankingLogic struct {
 }
 
 // OnUserRaiseHand 用户举手时触发，维护排行榜
-func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, liveID, userID int64) error {
-	lockKey := fmt.Sprintf("lock:live:ranking:%d", liveID)
+func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, classRoomId, liveID, userID int64) error {
+	lockKey := fmt.Sprintf("lock:classroom:ranking:%d", classRoomId)
 	lockValue := uuid.NewString()
 	locked, err := l.RedisClient.SetNX(ctx, lockKey, lockValue, 5*time.Second).Result()
 	if err != nil {
@@ -34,10 +36,17 @@ func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, liveID, userID int64
 		return errors.New("another operation is in progress, please try again later")
 	}
 	defer func() {
-		// 只删除自己加的锁，防止误删
-		val, err := l.RedisClient.Get(ctx, lockKey).Result()
-		if err == nil && val == lockValue {
-			l.RedisClient.Del(ctx, lockKey)
+		// 使用 pipeline 一次性执行 Get 和 Del 操作
+		pipe := l.RedisClient.Pipeline()
+		getCmd := pipe.Get(ctx, lockKey)
+		pipe.Del(ctx, lockKey)
+		_, err := pipe.Exec(ctx)
+		if err == nil {
+			val, _ := getCmd.Result()
+			if val != lockValue {
+				// 如果不是自己的锁，重新删除
+				l.RedisClient.Del(ctx, lockKey)
+			}
 		}
 	}()
 
@@ -47,21 +56,27 @@ func (l *RankingLogic) OnUserRaiseHand(ctx context.Context, liveID, userID int64
 		return fmt.Errorf("query user stats failed: %w", err)
 	}
 	item.Score = model.CalcRankingScore(item)
-	zsetKey := fmt.Sprintf("live:ranking:%d", liveID)
-	// 只更新当前用户的分数
-	err = l.RedisClient.ZAdd(ctx, zsetKey, &redis.Z{
+	zsetKey := fmt.Sprintf("classroom:ranking:%d", classRoomId)
+
+	// 使用 pipeline 一次性执行 ZAdd 和 Expire 操作
+	pipe := l.RedisClient.Pipeline()
+	pipe.ZAdd(ctx, zsetKey, &redis.Z{
 		Score:  item.Score,
 		Member: item.UserID,
-	}).Err()
+	})
+	pipe.Expire(ctx, zsetKey, 24*time.Hour)
+
+	_, err = pipe.Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("update redis zset failed: %w", err)
+		return fmt.Errorf("update redis zset and set expiry failed: %w", err)
 	}
+
 	return nil
 }
 
 // OnUserCancelRaiseHand 用户撤销举手时，移除排行榜中的该用户
-func (l *RankingLogic) OnUserCancelRaiseHand(ctx context.Context, liveID, userID int64) error {
-	lockKey := fmt.Sprintf("lock:live:ranking:%d", liveID)
+func (l *RankingLogic) OnUserCancelRaiseHand(ctx context.Context, classRoomId, liveID, userID int64) error {
+	lockKey := fmt.Sprintf("lock:classroom:ranking:%d", classRoomId)
 	lockValue := uuid.NewString()
 	locked, err := l.RedisClient.SetNX(ctx, lockKey, lockValue, 5*time.Second).Result()
 	if err != nil {
@@ -71,18 +86,56 @@ func (l *RankingLogic) OnUserCancelRaiseHand(ctx context.Context, liveID, userID
 		return errors.New("another operation is in progress, please try again later")
 	}
 	defer func() {
-		val, err := l.RedisClient.Get(ctx, lockKey).Result()
-		if err == nil && val == lockValue {
-			l.RedisClient.Del(ctx, lockKey)
+		// 使用 pipeline 一次性执行 Get 和 Del 操作
+		pipe := l.RedisClient.Pipeline()
+		getCmd := pipe.Get(ctx, lockKey)
+		pipe.Del(ctx, lockKey)
+		_, err := pipe.Exec(ctx)
+		if err == nil {
+			val, _ := getCmd.Result()
+			if val != lockValue {
+				// 如果不是自己的锁，重新删除
+				l.RedisClient.Del(ctx, lockKey)
+			}
 		}
 	}()
 
-	zsetKey := fmt.Sprintf("live:ranking:%d", liveID)
+	zsetKey := fmt.Sprintf("classroom:ranking:%d", classRoomId)
 	err = l.RedisClient.ZRem(ctx, zsetKey, userID).Err()
 	if err != nil {
 		return fmt.Errorf("remove user from redis zset failed: %w", err)
 	}
 	return nil
+}
+
+// GetRanking 获取排行榜
+func (l *RankingLogic) GetRanking(ctx context.Context, classRoomId int64) ([]*types.RankingItem, error) {
+	zsetKey := fmt.Sprintf("classroom:ranking:%d", classRoomId)
+
+	// 获取排行榜前100名，按分数升序排列（分数越小排名越靠前）
+	result, err := l.RedisClient.ZRangeWithScores(ctx, zsetKey, 0, 99).Result()
+	if err != nil {
+		return nil, fmt.Errorf("get ranking failed: %w", err)
+	}
+
+	var items []*types.RankingItem
+	for _, z := range result {
+		userID := z.Member.(string)
+		// 这里需要将string转换为int64，实际使用时需要根据你的userID类型调整
+		// 假设userID是数字字符串
+		userIDInt, err := strconv.ParseInt(userID, 10, 64)
+		if err != nil {
+			continue
+		}
+
+		item := &types.RankingItem{
+			UserID: userIDInt,
+			Score:  z.Score,
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
 }
 
 // StartInteractionWithLock 业务逻辑：保证同 classroomId 下只有一个 status=2 的记录
